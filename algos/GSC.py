@@ -20,9 +20,9 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
         self,
         super_pixel_method=SuperpixelMethod.LSC,
         region_size: int = 20,
-        ruler: float = 10.0,              # SLIC 用
-        ratio: float = 0.075,             # LSC 用
-        num_superpixels: int = 400,       # SEEDS 用
+        ruler: float = 10.0,              # SLIC
+        ratio: float = 0.075,             # LSC
+        num_superpixels: int = 400,       # SEEDS
         num_levels: int = 4,
         prior: int = 2,
         histogram_bins: int = 5,
