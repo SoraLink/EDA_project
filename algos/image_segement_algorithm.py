@@ -6,7 +6,7 @@ import numpy as np
 class ImageSegmentAlgorithm(abc.ABC):
     
     @abc.abstractmethod
-    def segment(self, image_path: str) -> np.ndarray:
+    def segment(self, image: np.ndarray) -> np.ndarray:
         """
         Segment the input image using a specific segmentation algorithm.
 
@@ -16,8 +16,8 @@ class ImageSegmentAlgorithm(abc.ABC):
 
         Parameters
         ----------
-        image_path : str
-            Path to the image file to be segmented.
+        image : np.ndarray
+            The image file to be segmented.
 
         Returns
         -------

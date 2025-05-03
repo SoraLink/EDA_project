@@ -147,8 +147,7 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
         )
         return merged_labels
 
-    def segment(self, image_path: str) -> np.ndarray:
-        image = cv2.imread(image_path)
+    def segment(self, image: np.ndarray) -> np.ndarray:
         superpixel_labels = self._get_superpixels(image)
         rag = self._build_rag(image, superpixel_labels)
         labels = self._merge_rag_labels(image, superpixel_labels, rag)
