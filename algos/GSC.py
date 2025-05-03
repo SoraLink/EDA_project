@@ -1,33 +1,46 @@
-import dataclasses
-
+from enum import IntEnum
 import cv2
 import numpy as np
+from matplotlib import pyplot as plt
+from scipy.ndimage import binary_dilation
 from skimage import graph
 from skimage.color import rgb2lab
-from skimage.graph import merge_hierarchical
-from webencodings import labels
+from skimage.feature import local_binary_pattern
+from skimage.filters import sobel
+from skimage.graph import merge_hierarchical, cut_normalized, rag_mean_color
 
 from algos.image_segement_algorithm import ImageSegmentAlgorithm
 
-@dataclasses
-class SuperpixelMethod:
+class SuperpixelMethod(IntEnum):
     SLIC = 1
     LSC = 2
     SEEDS = 3
 
+class ClusteringMethod(IntEnum):
+    CUT_NORMALIZED = 1
+    MERGE_HIERARCHICAL = 2
+
 class GraphBasedSuperpixel(ImageSegmentAlgorithm):
     def __init__(
         self,
-        super_pixel_method=SuperpixelMethod.LSC,
+        super_pixel_method: SuperpixelMethod = SuperpixelMethod.SEEDS,
+        clustering_method: ClusteringMethod = ClusteringMethod.MERGE_HIERARCHICAL,
         region_size: int = 20,
-        ruler: float = 10.0,              # SLIC
-        ratio: float = 0.075,             # LSC
-        num_superpixels: int = 400,       # SEEDS
+        ruler: float = 10.0,
+        ratio: float = 0.075,
+        num_superpixels: int = 400,
         num_levels: int = 4,
         prior: int = 2,
         histogram_bins: int = 5,
-        num_iterations: int = 10
+        num_iterations: int = 10,
+        alpha: float = 1,
+        beta: float = 0.3,
+        gamma: float = 0.3,
+        delta: float = 0.3,
+        threshold: float = 0.9,
+        K: int = 2
     ):
+        # superpixel settings
         self.super_pixel_method = super_pixel_method
         self.region_size = region_size
         self.ruler = ruler
@@ -37,50 +50,34 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
         self.prior = prior
         self.histogram_bins = histogram_bins
         self.num_iterations = num_iterations
+        # clustering method
+        self.clustering_method = clustering_method
+        # normalized cut weights
+        self.K = K
+        # merge weights
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.delta = delta
+        self.threshold = threshold
 
-    def _get_superpixels(self, image):
-        """
-        Generate superpixel segmentation labels for the input image using the specified method.
-
-        Depending on the selected `super_pixel_method`, this method applies one of the supported
-        superpixel algorithms (SLIC, LSC, or SEEDS) to compute a label map, where each pixel is
-        assigned to a superpixel region.
-
-        Parameters
-        ----------
-        image : np.ndarray
-            Input image in BGR format as loaded by cv2.imread().
-
-        Returns
-        -------
-        labels : np.ndarray
-            A 2D array of shape (H, W), where each element is an integer representing the superpixel
-            label assigned to the corresponding pixel.
-        """
-
+    def _get_superpixels(self, image: np.ndarray) -> np.ndarray:
         image_lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         H, W = image.shape[:2]
-
         if self.super_pixel_method == SuperpixelMethod.SLIC:
             slic = cv2.ximgproc.createSuperpixelSLIC(
-                image_lab,
-                algorithm=cv2.ximgproc.SLIC,
-                region_size=self.region_size,
-                ruler=self.ruler
+                image_lab, algorithm=cv2.ximgproc.SLIC,
+                region_size=self.region_size, ruler=self.ruler
             )
             slic.iterate(self.num_iterations)
-            labels = slic.getLabels()
-
-        elif self.super_pixel_method == SuperpixelMethod.LSC:
+            return slic.getLabels()
+        if self.super_pixel_method == SuperpixelMethod.LSC:
             lsc = cv2.ximgproc.createSuperpixelLSC(
-                image_lab,
-                region_size=self.region_size,
-                ratio=self.ratio
+                image_lab, region_size=self.region_size, ratio=self.ratio
             )
             lsc.iterate(self.num_iterations)
-            labels = lsc.getLabels()
-
-        elif self.super_pixel_method == SuperpixelMethod.SEEDS:
+            return lsc.getLabels()
+        if self.super_pixel_method == SuperpixelMethod.SEEDS:
             seeds = cv2.ximgproc.createSuperpixelSEEDS(
                 W, H, image.shape[2],
                 num_superpixels=self.num_superpixels,
@@ -89,79 +86,126 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
                 histogram_bins=self.histogram_bins
             )
             seeds.iterate(image, num_iterations=self.num_iterations)
-            labels = seeds.getLabels()
-
-        else:
-            raise ValueError(f"Unsupported superpixel method: {self.super_pixel_method}")
-
-        return labels
+            return seeds.getLabels()
+        raise ValueError(f"Unsupported superpixel method: {self.super_pixel_method}")
 
     def _build_rag(self, image: np.ndarray, labels: np.ndarray) -> graph.RAG:
-        """
-        Construct a Region Adjacency Graph (RAG) from superpixel labels.
-
-        Parameters
-        ----------
-        image : np.ndarray
-            Input image in BGR format.
-        labels : np.ndarray
-            2D array of superpixel labels, shape (H, W).
-
-        Returns
-        -------
-        rag : skimage.future.graph.RAG
-            A graph where each node represents a superpixel and each edge
-            connects adjacent superpixels with edge weights based on mean color distance.
-        """
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         image_lab = rgb2lab(image_rgb)
-        rag = graph.rag_mean_color(image_lab, labels, mode='distance')
+        rag = rag_mean_color(image_lab, labels)
+        gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
+        self.edge_strength = sobel(gray)
+        plt.imshow(self.edge_strength)
+        plt.show()
+        for edge in rag.edges:
+            n1, n2 = edge
+            mask1 = labels == n1
+            mask2 = labels == n2
+            boundary = np.logical_and(mask1, binary_dilation(mask2)) | np.logical_and(mask2, binary_dilation(mask1))
+            if np.any(boundary):
+                strength = self.edge_strength[boundary].mean()
+            else:
+                strength = 0.0
+            rag.edges[n1, n2]['edge_strength'] = strength
+        rag = self.initialize_rag_with_features(rag, labels, image_rgb)
+        weights = []
+        for u, v in rag.edges:
+            cd, ed, td, sd = self._compute_raw_weight(rag, u, v)
+            weights.append((cd, ed, td, sd))
+        if weights:
+            self._max_cd = max(w[0] for w in weights) or 1.0
+            self._max_ed = max(w[1] for w in weights) or 1.0
+            self._max_td = max(w[2] for w in weights) or 1.0
+            self._max_sd = max(w[3] for w in weights) or 1.0
         return rag
 
-    def _merge_rag_labels(self, image: np.ndarray, labels: np.ndarray, rag: graph.RAG,
-                          threshold: float = 20.0) -> np.ndarray:
-        """
-        Merge superpixels using hierarchical merging on the RAG.
-
-        Parameters
-        ----------
-        image : np.ndarray
-            Original input image in BGR format.
-        labels : np.ndarray
-            Original superpixel labels (H, W).
-        rag : skimage.future.graph.RAG
-            Region Adjacency Graph built from the superpixels.
-        threshold : float
-            Merging threshold; lower value means stricter merging.
-
-        Returns
-        -------
-        merged_labels : np.ndarray
-            A 2D array of shape (H, W), where each pixel is assigned to a merged region.
-        """
-        merged_labels = merge_hierarchical(
-            labels, rag, thresh=threshold, rag_copy=False,
-            in_place_merge=True,
-            merge_func=self._merge_mean_color,
-            weight_func=self._weight_mean_color
-        )
-        return merged_labels
+    def _merge_rag_labels(self, labels: np.ndarray, rag: graph.RAG) -> np.ndarray:
+        # compute all edge weights
+        if self.clustering_method == ClusteringMethod.CUT_NORMALIZED:
+            return cut_normalized(labels, rag, num_cuts=self.K)
+        elif self.clustering_method == ClusteringMethod.MERGE_HIERARCHICAL:
+            self.labels = labels
+            return merge_hierarchical(
+                labels, rag, thresh=self.threshold,
+                rag_copy=False, in_place_merge=True,
+                merge_func=self._merge_region_features,
+                weight_func=self._weight_region
+            )
+        raise ValueError(f"Unsupported clustering method: {self.clustering_method}")
 
     def segment(self, image: np.ndarray) -> np.ndarray:
-        superpixel_labels = self._get_superpixels(image)
-        rag = self._build_rag(image, superpixel_labels)
-        labels = self._merge_rag_labels(image, superpixel_labels, rag)
-        return labels
+        sp_labels = self._get_superpixels(image)
+        rag = self._build_rag(image, sp_labels)
+        merged = self._merge_rag_labels(sp_labels, rag)
+        return merged
+
+    def _merge_region_features(self, graph, src, dst):
+        # merge color, edge, texture, and spatial centroid
+        tc_dst, pc_dst = graph.nodes[dst]['total color'], graph.nodes[dst]['pixel count']
+        tex_dst = graph.nodes[dst]['texture']
+        x_dst = graph.nodes[dst]['x_centroid']
+        y_dst = graph.nodes[dst]['y_centroid']
+        tc_src, pc_src = graph.nodes[src]['total color'], graph.nodes[src]['pixel count']
+        tex_src = graph.nodes[src]['texture']
+        x_src = graph.nodes[src]['x_centroid']
+        y_src = graph.nodes[src]['y_centroid']
+        # update stats
+        graph.nodes[dst]['total color'] = tc_dst + tc_src
+        graph.nodes[dst]['pixel count'] = pc_dst + pc_src
+        graph.nodes[dst]['mean color']  = graph.nodes[dst]['total color']/graph.nodes[dst]['pixel count']
+        graph.nodes[dst]['texture']       = (tex_dst*pc_dst + tex_src*pc_src)/(pc_dst+pc_src)
+        graph.nodes[dst]['x_centroid']    = (x_dst*pc_dst + x_src*pc_src)/(pc_dst+pc_src)
+        graph.nodes[dst]['y_centroid']    = (y_dst*pc_dst + y_src*pc_src)/(pc_dst+pc_src)
+        # # update edge strength
+        # neighbors = set(graph.neighbors(dst)) | set(graph.neighbors(src))
+        # neighbors.discard(dst)
+        # neighbors.discard(src)
+        # merged_mask = (self.labels == dst) | (self.labels == src)
+        # for neighbor in neighbors:
+        #     mask2 = self.labels == neighbor
+        #     boundary = binary_dilation(merged_mask, np.ones((3,3))) & mask2
+        #     strength = self.edge_strength[boundary].mean if np.any(boundary) else 0.0
+        #     graph.edges[dst, neighbor]['edge_strength'] = strength
+
+    def _weight_region(self, graph, src, dst, neighbor):
+        # normalized diff in [0,1] by design
+        cd = np.linalg.norm(graph.nodes[neighbor]['mean color'][1:] - graph.nodes[dst]['mean color'][1:]) / (self._max_cd + 1e-8)
+        td = abs(graph.nodes[neighbor]['texture'] - graph.nodes[dst]['texture']) / (self._max_td + 1e-8)
+        dx = graph.nodes[neighbor]['x_centroid'] - graph.nodes[dst]['x_centroid']
+        dy = graph.nodes[neighbor]['y_centroid'] - graph.nodes[dst]['y_centroid']
+        sd = np.hypot(dx, dy) / (self._max_sd + 1e-8)
+        merged_mask = (self.labels == dst) | (self.labels == src)
+        mask2 = self.labels == neighbor
+        boundary = binary_dilation(merged_mask, np.ones((3, 3))) & mask2
+        strength = self.edge_strength[boundary].mean() if np.any(boundary) else 0.0
+        ed = strength / (self._max_ed + 1e-8)
+        w = self.alpha*cd + self.beta * ed + self.gamma*td + self.delta*sd
+        return {'weight': w}
+
+    def _compute_raw_weight(self, graph, src, dst):
+        cd = np.linalg.norm(graph.nodes[src]['mean color'][1:] - graph.nodes[dst]['mean color'][1:])
+        ed = abs(graph.edges[src, dst].get('edge_strength', 0))
+        td = abs(graph.nodes[src]['texture'] - graph.nodes[dst]['texture'])
+        dx = graph.nodes[src]['x_centroid'] - graph.nodes[dst]['x_centroid']
+        dy = graph.nodes[src]['y_centroid'] - graph.nodes[dst]['y_centroid']
+        sd = np.hypot(dx, dy)
+        return cd, ed, td, sd
 
     @staticmethod
-    def _merge_mean_color(graph, src, dst):
-        graph.nodes[dst]['total color'] += graph.nodes[src]['total color']
-        graph.nodes[dst]['pixel count'] += graph.nodes[src]['pixel count']
-        graph.nodes[dst]['mean color'] = (
-            graph.nodes[dst]['total color'] / graph.nodes[dst]['pixel count']
-        )
-
-    @staticmethod
-    def _weight_mean_color(graph, src, dst, n):
-        diff = graph.nodes[src]['mean color'] - graph.nodes[dst]['mean color']
-        return np.linalg.norm(diff)
+    def initialize_rag_with_features(rag, labels, image_rgb):
+        normalized_image = image_rgb.astype(np.float32) / 255.0
+        H, W = labels.shape
+        img_gray = cv2.cvtColor(cv2.cvtColor(image_rgb,cv2.COLOR_RGB2BGR),cv2.COLOR_BGR2GRAY)
+        texture_map = local_binary_pattern(img_gray,P=8,R=1,method='uniform')
+        # compute features and centroid
+        for region in np.unique(labels):
+            mask = labels==region
+            pixels = normalized_image[mask]
+            xs, ys = np.nonzero(mask)
+            rag.nodes[region]['mean color']    = pixels.mean(axis=0)
+            rag.nodes[region]['total color']   = pixels.sum(axis=0)
+            rag.nodes[region]['pixel count']   = mask.sum()
+            rag.nodes[region]['texture']       = texture_map[mask].mean()
+            rag.nodes[region]['x_centroid']    = xs.mean()/H
+            rag.nodes[region]['y_centroid']    = ys.mean()/W
+        return rag
