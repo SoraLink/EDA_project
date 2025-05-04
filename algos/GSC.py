@@ -1,10 +1,13 @@
+import os
 from enum import IntEnum
 import cv2
+import networkx as nx
 import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt
 from scipy.ndimage import binary_dilation
 from skimage import graph
-from skimage.color import rgb2lab
+from skimage.color import rgb2lab, label2rgb
 from skimage.feature import local_binary_pattern
 from skimage.filters import sobel
 from skimage.graph import merge_hierarchical, cut_normalized, rag_mean_color
@@ -28,16 +31,16 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
         region_size: int = 20,
         ruler: float = 10.0,
         ratio: float = 0.075,
-        num_superpixels: int = 400,
+        num_superpixels: int = 200,
         num_levels: int = 4,
         prior: int = 2,
         histogram_bins: int = 5,
         num_iterations: int = 10,
-        alpha: float = 1,
-        beta: float = 0.3,
-        gamma: float = 0.3,
-        delta: float = 0.3,
-        threshold: float = 0.9,
+        alpha: float = 0.77,
+        beta: float = 0.03,
+        gamma: float = 0.12,
+        delta: float = 0.1,
+        threshold: float = 0.5,
         K: int = 2
     ):
         # superpixel settings
@@ -117,6 +120,7 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
             self._max_ed = max(w[1] for w in weights) or 1.0
             self._max_td = max(w[2] for w in weights) or 1.0
             self._max_sd = max(w[3] for w in weights) or 1.0
+        self.initialize_rag_with_weight(rag, labels)
         return rag
 
     def _merge_rag_labels(self, labels: np.ndarray, rag: graph.RAG) -> np.ndarray:
@@ -137,6 +141,7 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
         sp_labels = self._get_superpixels(image)
         rag = self._build_rag(image, sp_labels)
         merged = self._merge_rag_labels(sp_labels, rag)
+        self.draw_rag_overlay(image, merged, rag)
         return merged
 
     def _merge_region_features(self, graph, src, dst):
@@ -156,16 +161,6 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
         graph.nodes[dst]['texture']       = (tex_dst*pc_dst + tex_src*pc_src)/(pc_dst+pc_src)
         graph.nodes[dst]['x_centroid']    = (x_dst*pc_dst + x_src*pc_src)/(pc_dst+pc_src)
         graph.nodes[dst]['y_centroid']    = (y_dst*pc_dst + y_src*pc_src)/(pc_dst+pc_src)
-        # # update edge strength
-        # neighbors = set(graph.neighbors(dst)) | set(graph.neighbors(src))
-        # neighbors.discard(dst)
-        # neighbors.discard(src)
-        # merged_mask = (self.labels == dst) | (self.labels == src)
-        # for neighbor in neighbors:
-        #     mask2 = self.labels == neighbor
-        #     boundary = binary_dilation(merged_mask, np.ones((3,3))) & mask2
-        #     strength = self.edge_strength[boundary].mean if np.any(boundary) else 0.0
-        #     graph.edges[dst, neighbor]['edge_strength'] = strength
 
     def _weight_region(self, graph, src, dst, neighbor):
         # normalized diff in [0,1] by design
@@ -177,7 +172,7 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
         merged_mask = (self.labels == dst) | (self.labels == src)
         mask2 = self.labels == neighbor
         boundary = binary_dilation(merged_mask, np.ones((3, 3))) & mask2
-        strength = self.edge_strength[boundary].mean() if np.any(boundary) else 0.0
+        strength = self.edge_strength[boundary].max() if np.any(boundary) else 0.0
         ed = strength / (self._max_ed + 1e-8)
         w = self.alpha*cd + self.beta * ed + self.gamma*td + self.delta*sd
         return {'weight': w}
@@ -193,6 +188,8 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
 
     @staticmethod
     def initialize_rag_with_features(rag, labels, image_rgb):
+        image_lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2LAB)
+        # normalized_image = GraphBasedSuperpixel.normalize_lab(image_lab)
         normalized_image = image_rgb.astype(np.float32) / 255.0
         H, W = labels.shape
         img_gray = cv2.cvtColor(cv2.cvtColor(image_rgb,cv2.COLOR_RGB2BGR),cv2.COLOR_BGR2GRAY)
@@ -209,3 +206,91 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
             rag.nodes[region]['x_centroid']    = xs.mean()/H
             rag.nodes[region]['y_centroid']    = ys.mean()/W
         return rag
+
+    def initialize_rag_with_weight(self, graph, labels):
+        # normalized diff in [0,1] by design
+        for u, v in graph.edges:
+            cd = np.linalg.norm(graph.nodes[u]['mean color'][1:] - graph.nodes[v]['mean color'][1:]) / (self._max_cd + 1e-8)
+            td = abs(graph.nodes[u]['texture'] - graph.nodes[v]['texture']) / (self._max_td + 1e-8)
+            dx = graph.nodes[u]['x_centroid'] - graph.nodes[v]['x_centroid']
+            dy = graph.nodes[u]['y_centroid'] - graph.nodes[v]['y_centroid']
+            sd = np.hypot(dx, dy) / (self._max_sd + 1e-8)
+            merged_mask = (labels == u)
+            mask2 = labels == v
+            boundary = binary_dilation(merged_mask, np.ones((3, 3))) & mask2
+            strength = self.edge_strength[boundary].max() if np.any(boundary) else 0.0
+            ed = strength / (self._max_ed + 1e-8)
+            w = self.alpha*cd + self.beta * ed + self.gamma*td + self.delta*sd
+            graph.edges[u, v]['weight'] = w
+
+    @staticmethod
+    def normalize_lab(image_lab: np.ndarray) -> np.ndarray:
+        """
+        Normalize an OpenCV LAB image to [0, 1] range per channel.
+
+        Parameters:
+            image_lab (np.ndarray): LAB image in OpenCV format, dtype uint8 or float32.
+
+        Returns:
+            np.ndarray: Normalized LAB image in float32, shape same as input.
+        """
+        image_lab = image_lab.astype(np.float32)
+        L = image_lab[:, :, 0] / 100.0  # L channel in [0, 100]
+        a = (image_lab[:, :, 1] + 128.0) / 255.0  # a in [-128, 127]
+        b = (image_lab[:, :, 2] + 128.0) / 255.0  # b in [-128, 127]
+        return np.stack([L, a, b], axis=-1)
+
+    @staticmethod
+    def draw_rag_overlay(image, labels, rag, weight_key='weight'):
+        # 设置图像背景
+        out = label2rgb(labels, image, kind='avg')
+
+        # 创建 NetworkX 图
+        G = nx.Graph()
+        for n in rag.nodes:
+            G.add_node(n)
+
+        # 添加边，边的粗细按 weight 设定
+        for u, v, data in rag.edges(data=True):
+            weight = data.get(weight_key, 0.0)
+            G.add_edge(u, v, weight=weight)
+
+        # 获取每个 superpixel 的质心
+        pos = {}
+        for region in rag.nodes:
+            x = rag.nodes[region]['x_centroid'] * labels.shape[1]
+            y = rag.nodes[region]['y_centroid'] * labels.shape[0]
+            pos[region] = (y, x)
+
+        # 画图
+        plt.figure(figsize=(10, 10))
+        plt.imshow(out)
+
+        # 节点位置、大小、边
+        nx.draw_networkx_nodes(G, pos, node_size=20, node_color='cyan', alpha=0.6)
+        nx.draw_networkx_labels(G, pos, font_size=8, font_color='black')
+
+        edges = G.edges(data=True)
+        weights = [d[2].get(weight_key, 0.0) for d in edges]
+
+        # Normalize weights to line widths
+        max_w = max(weights) if weights else 1
+        widths = [2.5 * (1 - w / (max_w + 1e-5)) for w in weights]  # weight 越小线越粗
+
+        nx.draw_networkx_edges(G, pos, edge_color='red', width=widths, alpha=0.6)
+
+        plt.axis('off')
+        plt.title("RAG with Edge Weights (inverse thickness)")
+        plt.show()
+        print("\n--- RAG Adjacency Matrix (Weights) ---")
+        regions = sorted(rag.nodes)
+        matrix = np.full((len(regions), len(regions)), np.nan)
+
+        for u, v, data in G.edges(data=True):
+            i = regions.index(u)
+            j = regions.index(v)
+            matrix[i, j] = matrix[j, i] = data.get(weight_key, 0.0)
+        adj_matrix = nx.to_pandas_adjacency(rag, weight=weight_key, nodelist=sorted(rag.nodes()))
+        os.makedirs("output", exist_ok=True)
+        csv_path = os.path.join("output", "rag_adjacency_matrix.csv")
+        adj_matrix.to_csv(csv_path)
