@@ -4,35 +4,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 from skimage import io
 from skimage.transform import resize
-from skimage.filters import gaussian
-from skimage.color import rgb2gray
 from spectral_clustering import SpectralClustering
-
-def preprocess_image(image, target_size=(64, 64), use_grayscale=False, apply_smoothing=True):
-    """
-    Preprocess images: resize, optionally convert to grayscale and apply smoothing filters
-    """
-    # Scaling an image
-    if target_size is not None:
-        image = resize(image, target_size, anti_aliasing=True)
-    
-    # Convert to Grayscale
-    if use_grayscale and len(image.shape) > 2:
-        image = rgb2gray(image)
-        # Convert back to 3 channels to be compatible with the algorithm
-        image = np.stack([image] * 3, axis=2)
-    
-    # Apply Gaussian smoothing
-    if apply_smoothing:
-        # Apply smoothing to each channel separately
-        for i in range(image.shape[2]):
-            image[:,:,i] = gaussian(image[:,:,i], sigma=1)
-    
-    return image
 
 def calculate_iou(segmentation, ground_truth, class_idx, gt_class_idx):
     """
     Calculate the IOU between specific categories of two segmentation results
+    
+    Parameters:
+    segmentation: ndarray - Segmentation result
+    ground_truth: ndarray - Ground truth
+    class_idx: int - Class index in segmentation
+    gt_class_idx: int - Class index in ground truth
+    
+    Returns:
+    float - IOU value (0-1)
     """
     # Create binary masks
     mask_seg = (segmentation == class_idx)
@@ -49,7 +34,15 @@ def calculate_iou(segmentation, ground_truth, class_idx, gt_class_idx):
 
 def find_best_matching_classes(segmentation, ground_truth, k=4):
     """
-    Find the best matching category pairs between segmentation result and ground truth
+    Find the best matching class pairs between segmentation result and ground truth
+    
+    Parameters:
+    segmentation: ndarray - Segmentation result
+    ground_truth: ndarray - Ground truth
+    k: int - Number of classes in segmentation
+    
+    Returns:
+    dict - Mapping from segmentation classes to (ground truth class, IOU) pairs
     """
     matches = {}
     
@@ -70,9 +63,17 @@ def find_best_matching_classes(segmentation, ground_truth, k=4):
     
     return matches
 
-def process_single_image(image_path, output_dir, params, preprocess_params):
+def process_single_image(image_path, output_dir, params):
     """
     Process a single image with Normalized Cut segmentation
+    
+    Parameters:
+    image_path: str - Path to the input image
+    output_dir: str - Output directory for saving results
+    params: dict - Algorithm parameters
+    
+    Returns:
+    tuple - (segmentation, processed_image)
     """
     if not os.path.exists(image_path):
         print(f"The image file does not exist: {image_path}")
@@ -90,26 +91,23 @@ def process_single_image(image_path, output_dir, params, preprocess_params):
     # Save original image size
     original_size = f"{image.shape[0]}x{image.shape[1]}"
     
-    # Apply image preprocessing
-    processed_image = preprocess_image(
-        image,
-        target_size=preprocess_params['target_size'],
-        use_grayscale=preprocess_params['use_grayscale'],
-        apply_smoothing=preprocess_params['apply_smoothing']
-    )
-    
     # Creating an Algorithm Instance
     spectral = SpectralClustering(
         sigma_I=params['sigma_I'],
         sigma_X=params['sigma_X'],
         r=params['r'],
-        k=params['k']
+        k=params['k'],
+        target_size=params['target_size'],
+        apply_smoothing=params['apply_smoothing']
     )
     
     print(f"Start image segmentation...")
     
-    # segmentation
-    segmented = spectral.segment(processed_image)
+    # Segmentation - pass the original image directly
+    segmented = spectral.segment(image)
+    
+    # For visualization, get the processed image
+    processed_image = spectral._preprocess_image(image)
     
     # Creating visualization results
     h, w = segmented.shape
@@ -132,7 +130,7 @@ def process_single_image(image_path, output_dir, params, preprocess_params):
     
     plt.subplot(132)
     plt.imshow(processed_image)
-    plt.title(f'Preprocessing images ({preprocess_params["target_size"][0]}x{preprocess_params["target_size"][1]})')
+    plt.title(f'Preprocessed Image ({processed_image.shape[0]}x{processed_image.shape[1]})')
     plt.axis('off')
     
     plt.subplot(133)
@@ -151,6 +149,15 @@ def process_single_image(image_path, output_dir, params, preprocess_params):
 def evaluate_with_ground_truth(image_path, gt_path, output_dir, params):
     """
     Evaluate Normalized Cut algorithm against ground truth
+    
+    Parameters:
+    image_path: str - Path to the input image
+    gt_path: str - Path to the ground truth
+    output_dir: str - Output directory for saving results
+    params: dict - Algorithm parameters
+    
+    Returns:
+    dict - Evaluation results
     """
     print(f"\nEvaluating image: {image_path}")
     
@@ -172,9 +179,6 @@ def evaluate_with_ground_truth(image_path, gt_path, output_dir, params):
     # Save original size
     original_size = f"{image.shape[0]}x{image.shape[1]}"
     
-    # Preprocess image
-    processed_image = preprocess_image(image, target_size=(64, 64))
-    
     # Run Normalized Cut algorithm
     print("Running Normalized Cut algorithm...")
     start_time = time.time()
@@ -182,20 +186,27 @@ def evaluate_with_ground_truth(image_path, gt_path, output_dir, params):
         sigma_I=params['sigma_I'],
         sigma_X=params['sigma_X'],
         r=params['r'],
-        k=params['k']
+        k=params['k'],
+        target_size=params['target_size'],
+        apply_smoothing=params['apply_smoothing']
     )
-    ncut_seg = spectral.segment(processed_image)
+    
+    # Pass the original image directly
+    ncut_seg = spectral.segment(image)
     ncut_time = time.time() - start_time
     print(f"Normalized Cut time: {ncut_time:.2f} seconds")
+    
+    # Get processed image for visualization
+    processed_image = spectral._preprocess_image(image)
     
     # Calculate IOU with ground truth
     print("Calculating IOU against ground truth...")
     
     # Find best matching classes for Normalized Cut compared to ground truth
-    ncut_gt_matches = find_best_matching_classes(ncut_seg, ground_truth, params['k'])
+    ncut_matches = find_best_matching_classes(ncut_seg, ground_truth, params['k'])
     
     # Calculate average IOU
-    ncut_avg_iou = sum(iou for _, iou in ncut_gt_matches.values()) / params['k']
+    ncut_avg_iou = sum(iou for _, iou in ncut_matches.values()) / params['k']
     
     # Print results
     print(f"Normalized Cut average IOU: {ncut_avg_iou:.4f}")
@@ -235,12 +246,16 @@ def evaluate_with_ground_truth(image_path, gt_path, output_dir, params):
         'image_name': image_name,
         'ncut_time': ncut_time,
         'ncut_avg_iou': ncut_avg_iou,
-        'ncut_gt_matches': ncut_gt_matches
+        'ncut_matches': ncut_matches
     }
 
 def generate_evaluation_report(results, output_dir):
     """
     Generate Normalized Cut evaluation report with ground truth comparison
+    
+    Parameters:
+    results: list - List of evaluation results
+    output_dir: str - Output directory for saving report
     """
     image_names = [r['image_name'] for r in results]
     ncut_times = [r['ncut_time'] for r in results]
@@ -290,7 +305,7 @@ def generate_evaluation_report(results, output_dir):
             f.write(f"  Execution time: {r['ncut_time']:.2f} seconds\n")
             f.write(f"  Average IOU: {r['ncut_avg_iou']:.4f}\n")
             f.write("  Class matching with Ground Truth:\n")
-            for ncut_idx, (gt_idx, iou) in r['ncut_gt_matches'].items():
+            for ncut_idx, (gt_idx, iou) in r['ncut_matches'].items():
                 f.write(f"    Class {ncut_idx} → GT class {gt_idx}: IOU = {iou:.4f}\n")
             f.write("\n")
         
@@ -319,19 +334,14 @@ def main():
     image_paths = [os.path.join(data_dir, img) for img in image_files]
     gt_paths = [os.path.join(gt_dir, img.replace('.png', '_gt.png')) for img in image_files]
     
-    # parameter
+    # Combined algorithm parameters
     params = {
-        'sigma_I': 0.1,  # Color similarity parameter
-        'sigma_X': 4.0,  # Spatial distance parameter
-        'r': 5,          # Neighborhood radius
-        'k': 4           # Number of segmentation categories
-    }
-    
-    # Image preprocessing parameters
-    preprocess_params = {
-        'target_size': (64, 64),  
-        'use_grayscale': False,   # Whether to convert to grayscale
-        'apply_smoothing': True   # Whether to apply smoothing
+        'sigma_I': 0.1,          # Color similarity parameter
+        'sigma_X': 4.0,          # Spatial distance parameter
+        'r': 5,                  # Neighborhood radius
+        'k': 4,                  # Number of segmentation categories
+        'target_size': (64, 64), # Target image size
+        'apply_smoothing': True  # Whether to apply smoothing
     }
     
     print("Please select the function to run:")
@@ -345,7 +355,7 @@ def main():
         print("\n=== Running Basic Image Segmentation ===")
         for image_path in image_paths:
             if os.path.exists(image_path):
-                process_single_image(image_path, output_dir, params, preprocess_params)
+                process_single_image(image_path, output_dir, params)
             else:
                 print(f"Warning: Image {image_path} does not exist, skipping")
     
