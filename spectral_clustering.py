@@ -15,14 +15,6 @@ class SpectralClustering:
     def __init__(self, sigma_I=0.05, sigma_X=4.0, r=5, k=4, target_size=(64, 64), apply_smoothing=True):
         """
         Initialize the Normalized Cut algorithm
-        
-        Parameters:
-        sigma_I: float - Color similarity parameter
-        sigma_X: float - Spatial distance parameter
-        r: int - Neighborhood radius
-        k: int - Number of segmentation categories
-        target_size: tuple - Target image size (height, width)
-        apply_smoothing: bool - Whether to apply Gaussian smoothing
         """
         self.sigma_I = sigma_I
         self.sigma_X = sigma_X
@@ -34,12 +26,6 @@ class SpectralClustering:
     def _preprocess_image(self, image):
         """
         Preprocess the input image: resize and apply smoothing
-        
-        Parameters:
-        image: ndarray - Input image (raw from imread)
-        
-        Returns:
-        ndarray - Processed image
         """
         # Make a copy to avoid modifying the original
         processed_image = image.copy()
@@ -68,13 +54,6 @@ class SpectralClustering:
     def _extract_features(self, image):
         """
         Extract features from image: color and spatial coordinates
-        
-        Parameters:
-        image: ndarray - Preprocessed image
-        
-        Returns:
-        features: ndarray - Feature matrix
-        img_shape: tuple - Image shape (height, width)
         """
         h, w, c = image.shape
             
@@ -92,13 +71,6 @@ class SpectralClustering:
     def _compute_similarity_matrix(self, features, img_shape):
         """
         Compute similarity matrix W between pixels
-        
-        Parameters:
-        features: ndarray - Feature matrix
-        img_shape: tuple - Image shape (height, width)
-        
-        Returns:
-        W: sparse matrix - Similarity matrix
         """
         print("Calculate the similarity matrix...")
         start_time = time.time()
@@ -165,12 +137,6 @@ class SpectralClustering:
     def _compute_normalized_laplacian(self, W):
         """
         Compute the normalized Laplacian matrix: L = D^(-1/2) * (D - W) * D^(-1/2)
-        
-        Parameters:
-        W: sparse matrix - Similarity matrix
-        
-        Returns:
-        L: sparse matrix - Normalized Laplacian matrix
         """
         print("Computing normalized Laplacian matrix...")
         start_time = time.time()
@@ -191,12 +157,6 @@ class SpectralClustering:
     def _get_eigenvectors(self, L):
         """
         Compute the first k eigenvectors of the Laplacian matrix
-        
-        Parameters:
-        L: sparse matrix - Normalized Laplacian matrix
-        
-        Returns:
-        eigen_vecs: ndarray - Eigenvectors
         """
         print(f"Computing {self.k} eigenvectors...")
         start_time = time.time()
@@ -221,13 +181,6 @@ class SpectralClustering:
     def _kmeans_clustering(self, features, k):
         """
         K-means clustering of feature vectors
-        
-        Parameters:
-        features: ndarray - Feature vectors
-        k: int - Number of clusters
-        
-        Returns:
-        labels: ndarray - Cluster labels
         """
         try:
             # Try using the existing kmeans module
@@ -254,12 +207,6 @@ class SpectralClustering:
     def segment(self, image):
         """
         Segment the image using Normalized Cut algorithm
-        
-        Parameters:
-        image: ndarray - Input image (raw from imread)
-        
-        Returns:
-        segmented: ndarray - Segmentation result (labels)
         """
         overall_start = time.time()
         
@@ -292,13 +239,6 @@ class SpectralClustering:
     def visualize_segmentation(self, image, segmented):
         """
         Visualize segmentation results
-        
-        Parameters:
-        image: ndarray - Original image
-        segmented: ndarray - Segmentation result (labels)
-        
-        Returns:
-        segmented_color: ndarray - Colorized segmentation map
         """
         h, w = segmented.shape
         
