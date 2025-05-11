@@ -9,15 +9,6 @@ from spectral_clustering import SpectralClustering
 def calculate_iou(segmentation, ground_truth, class_idx, gt_class_idx):
     """
     Calculate the IOU between specific categories of two segmentation results
-    
-    Parameters:
-    segmentation: ndarray - Segmentation result
-    ground_truth: ndarray - Ground truth
-    class_idx: int - Class index in segmentation
-    gt_class_idx: int - Class index in ground truth
-    
-    Returns:
-    float - IOU value (0-1)
     """
     # Create binary masks
     mask_seg = (segmentation == class_idx)
@@ -35,14 +26,6 @@ def calculate_iou(segmentation, ground_truth, class_idx, gt_class_idx):
 def find_best_matching_classes(segmentation, ground_truth, k=4):
     """
     Find the best matching class pairs between segmentation result and ground truth
-    
-    Parameters:
-    segmentation: ndarray - Segmentation result
-    ground_truth: ndarray - Ground truth
-    k: int - Number of classes in segmentation
-    
-    Returns:
-    dict - Mapping from segmentation classes to (ground truth class, IOU) pairs
     """
     matches = {}
     
@@ -66,14 +49,6 @@ def find_best_matching_classes(segmentation, ground_truth, k=4):
 def process_single_image(image_path, output_dir, params):
     """
     Process a single image with Normalized Cut segmentation
-    
-    Parameters:
-    image_path: str - Path to the input image
-    output_dir: str - Output directory for saving results
-    params: dict - Algorithm parameters
-    
-    Returns:
-    tuple - (segmentation, processed_image)
     """
     if not os.path.exists(image_path):
         print(f"The image file does not exist: {image_path}")
@@ -149,15 +124,6 @@ def process_single_image(image_path, output_dir, params):
 def evaluate_with_ground_truth(image_path, gt_path, output_dir, params):
     """
     Evaluate Normalized Cut algorithm against ground truth
-    
-    Parameters:
-    image_path: str - Path to the input image
-    gt_path: str - Path to the ground truth
-    output_dir: str - Output directory for saving results
-    params: dict - Algorithm parameters
-    
-    Returns:
-    dict - Evaluation results
     """
     print(f"\nEvaluating image: {image_path}")
     
@@ -252,10 +218,6 @@ def evaluate_with_ground_truth(image_path, gt_path, output_dir, params):
 def generate_evaluation_report(results, output_dir):
     """
     Generate Normalized Cut evaluation report with ground truth comparison
-    
-    Parameters:
-    results: list - List of evaluation results
-    output_dir: str - Output directory for saving report
     """
     image_names = [r['image_name'] for r in results]
     ncut_times = [r['ncut_time'] for r in results]
