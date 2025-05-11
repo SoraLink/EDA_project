@@ -1,0 +1,13 @@
+For plane, the best params is:
+alpha: float = 0.4,
+beta: float = 0.5,
+gamma: float = 0.1,
+delta: float = 0.,
+threshold: float = 0.1,
+
+For horse and deer, the best params is:
+alpha: float = 0.77,
+beta: float = 0.03,
+gamma: float = 0.12,
+delta: float = 0.1,
+threshold: float = 0.5,

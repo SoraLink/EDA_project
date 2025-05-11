@@ -11,6 +11,7 @@ from skimage.color import rgb2lab, label2rgb
 from skimage.feature import local_binary_pattern
 from skimage.filters import sobel
 from skimage.graph import merge_hierarchical, cut_normalized, rag_mean_color
+from sklearn.cluster import SpectralClustering
 
 from algos.image_segement_algorithm import ImageSegmentAlgorithm
 
@@ -126,7 +127,29 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
     def _merge_rag_labels(self, labels: np.ndarray, rag: graph.RAG) -> np.ndarray:
         # compute all edge weights
         if self.clustering_method == ClusteringMethod.CUT_NORMALIZED:
-            return cut_normalized(labels, rag, num_cuts=self.K)
+            dists = [data['weight'] for _, _, data in rag.edges(data=True)]
+            min_d, max_d = min(dists), max(dists)
+            sim_rag = rag.copy()
+            eps = 1e-8
+            for u, v, data in sim_rag.edges(data=True):
+                d_norm = (data['weight'] - min_d) / (max_d - min_d + eps)
+                data['weight'] = 1.0 - d_norm
+
+            regions = sorted(sim_rag.nodes())
+            A = nx.to_numpy_array(sim_rag, nodelist=regions, weight='weight')
+
+            # SpectralClustering
+            sc = SpectralClustering(
+                n_clusters=self.K,
+                affinity='precomputed',
+                assign_labels='kmeans',
+                random_state=0
+            )
+            labels_flat = sc.fit_predict(A)
+            region2cluster = {region: int(labels_flat[i]) for i, region in enumerate(regions)}
+            final_seg = np.vectorize(region2cluster.get)(labels)
+
+            return final_seg
         elif self.clustering_method == ClusteringMethod.MERGE_HIERARCHICAL:
             self.labels = labels
             return merge_hierarchical(
