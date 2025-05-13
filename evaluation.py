@@ -8,6 +8,8 @@ import numpy as np
 from algos import GSC
 from algos.GSC import SuperpixelMethod, ClusteringMethod, GraphBasedSuperpixel
 from algos.image_segement_algorithm import ImageSegmentAlgorithm
+from algos.kmeans_algorithm import KMeansSegmentation
+from algos.spectral_clustering import SpectralClustering
 
 
 def get_parser():
@@ -57,8 +59,14 @@ def get_parser():
         type=int,
         default=4
     )
-    spectral.add_argument(
-        "--target"
+
+    kmeans = subparsers.add_parser(
+        "kmeans"
+    )
+    kmeans.add_argument(
+        "--K",
+        type=int,
+        default=4
     )
 
     gsc = subparsers.add_parser(
@@ -195,7 +203,6 @@ def evaluate(image_dir: str, label_dir: str, algo: ImageSegmentAlgorithm) -> (li
 def main():
     parser = get_parser()
     args = parser.parse_args()
-    algo = None
     if args.algo == "gsc":
         superpixel_method = SuperpixelMethod[args.super_pixel_method]
         clustering_method = ClusteringMethod[args.clustering_method]
@@ -216,6 +223,17 @@ def main():
             delta=args.delta,
             threshold=args.threshold,
             K=args.K
+        )
+    elif args.algo == "spectral":
+        algo = SpectralClustering(
+            sigma_I=args.sigma_I,
+            sigma_X=args.sigma_X,
+            r=args.r,
+            k=args.K
+        )
+    elif args.algo == "kmeans":
+        algo = KMeansSegmentation(
+            K=args.K,
         )
     else:
         raise NotImplementedError(f"algo {args.algo} not implemented")

@@ -208,7 +208,7 @@ class SpectralClustering:
         """
         Segment the image using Normalized Cut algorithm
         """
-        overall_start = time.time()
+        original_image_shape = image.shape[0:2]
         
         # Step 0: Preprocess the image
         processed_image = self._preprocess_image(image)
@@ -231,10 +231,15 @@ class SpectralClustering:
         # Reshape labels to image size
         h, w = img_shape
         segmented = labels.reshape(h, w)
-        
-        print(f"Total segmentation time: {time.time() - overall_start:.2f}s")
-        
-        return segmented
+        seg_resized = resize(
+            segmented,
+            original_image_shape,
+            order=0,
+            preserve_range=True,
+            anti_aliasing=False
+        )
+        seg_resized = seg_resized.astype(segmented.dtype)
+        return seg_resized
     
     def visualize_segmentation(self, image, segmented):
         """
