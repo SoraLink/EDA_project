@@ -14,8 +14,24 @@ class SpectralClustering:
     
     def __init__(self, sigma_I=0.05, sigma_X=4.0, r=5, k=4, target_size=(64, 64), apply_smoothing=True):
         """
-        Initialize the Normalized Cut algorithm
+        Initialize parameters for Normalized Cut segmentation.
+
+        Parameters
+        ----------
+        sigma_I : float
+            Scale parameter for intensity (color) Gaussian kernel.
+        sigma_X : float
+            Scale parameter for spatial (coordinate) Gaussian kernel.
+        r : int
+            Radius for local neighborhood when building similarity graph.
+        k : int
+            Number of clusters (segments) to produce.
+        target_size : tuple of int
+            (height, width) to resize input for faster processing.
+        apply_smoothing : bool
+            If True, apply Gaussian smoothing before feature extraction.
         """
+
         self.sigma_I = sigma_I
         self.sigma_X = sigma_X
         self.r = r
@@ -25,8 +41,19 @@ class SpectralClustering:
     
     def _preprocess_image(self, image):
         """
-        Preprocess the input image: resize and apply smoothing
+        Resize and optionally smooth the image.
+
+        Parameters
+        ----------
+        image : ndarray, shape (H, W, C) or (H, W)
+            Input image in RGB or grayscale.
+
+        Returns
+        -------
+        processed_image : ndarray, shape (target_H, target_W, 3)
+            Float image in [0,1], 3 channels.
         """
+
         # Make a copy to avoid modifying the original
         processed_image = image.copy()
         
@@ -53,8 +80,21 @@ class SpectralClustering:
     
     def _extract_features(self, image):
         """
-        Extract features from image: color and spatial coordinates
+        Build per-pixel feature vectors: color + normalized coordinates.
+
+        Parameters
+        ----------
+        image : ndarray, shape (H, W, 3)
+            Preprocessed float image.
+
+        Returns
+        -------
+        features : ndarray, shape (H*W, 5)
+            Each row is [R, G, B, x_norm, y_norm].
+        img_shape : tuple of int
+            (H, W) of preprocessed image.
         """
+
         h, w, c = image.shape
             
         # Creating a Coordinate Grid
@@ -70,8 +110,21 @@ class SpectralClustering:
     
     def _compute_similarity_matrix(self, features, img_shape):
         """
-        Compute similarity matrix W between pixels
+        Build a sparse affinity matrix W based on Gaussian kernels.
+
+        Parameters
+        ----------
+        features : ndarray, shape (N, 5)
+            Pixel features.
+        img_shape : tuple of int
+            (H, W) preprocessed image size.
+
+        Returns
+        -------
+        W : scipy.sparse.csr_matrix, shape (N, N)
+            Sparse similarity (affinity) matrix.
         """
+
         print("Calculate the similarity matrix...")
         start_time = time.time()
         
@@ -136,8 +189,19 @@ class SpectralClustering:
     
     def _compute_normalized_laplacian(self, W):
         """
-        Compute the normalized Laplacian matrix: L = D^(-1/2) * (D - W) * D^(-1/2)
+        Compute normalized Laplacian: L = I - D^{-1/2} W D^{-1/2}.
+
+        Parameters
+        ----------
+        W : scipy.sparse.csr_matrix
+            Affinity matrix.
+
+        Returns
+        -------
+        L : scipy.sparse.csr_matrix
+            Normalized Laplacian.
         """
+
         print("Computing normalized Laplacian matrix...")
         start_time = time.time()
         
@@ -156,8 +220,19 @@ class SpectralClustering:
     
     def _get_eigenvectors(self, L):
         """
-        Compute the first k eigenvectors of the Laplacian matrix
+        Extract the smallest non-zero eigenvectors of L.
+
+        Parameters
+        ----------
+        L : scipy.sparse.csr_matrix
+            Normalized Laplacian.
+
+        Returns
+        -------
+        eigvecs : ndarray, shape (N, k)
+            Eigenvectors corresponding to the 2nd through (k+1)-th smallest eigenvalues.
         """
+
         print(f"Computing {self.k} eigenvectors...")
         start_time = time.time()
         
@@ -180,8 +255,21 @@ class SpectralClustering:
     
     def _kmeans_clustering(self, features, k):
         """
-        K-means clustering of feature vectors
+        Cluster rows of `features` into k groups via K-means.
+
+        Parameters
+        ----------
+        features : ndarray, shape (N, k)
+            Input feature vectors (e.g., eigenvectors).
+        k : int
+            Number of clusters.
+
+        Returns
+        -------
+        labels : ndarray, shape (N,)
+            Cluster labels [0..k-1].
         """
+
         try:
             # Try using the existing kmeans module
             from kmeans import KMeans
@@ -206,8 +294,19 @@ class SpectralClustering:
     
     def segment(self, image):
         """
-        Segment the image using Normalized Cut algorithm
+        Perform full Normalized Cut segmentation on `image`.
+
+        Parameters
+        ----------
+        image : ndarray, shape (H0, W0, C)
+            Original input image.
+
+        Returns
+        -------
+        segmented_resized : ndarray, shape (H0, W0)
+            Integer segment labels for each pixel.
         """
+
         original_image_shape = image.shape[0:2]
         
         # Step 0: Preprocess the image
@@ -243,8 +342,21 @@ class SpectralClustering:
     
     def visualize_segmentation(self, image, segmented):
         """
-        Visualize segmentation results
+        Display original & color-coded segmentation side by side.
+
+        Parameters
+        ----------
+        image : ndarray, shape (H, W, C)
+            Original image.
+        segmented : ndarray, shape (H, W)
+            Integer labels from `segment`.
+
+        Returns
+        -------
+        colored : ndarray, shape (H, W, 3)
+            RGB visualization of segments.
         """
+
         h, w = segmented.shape
         
         # Create a color map for the segmented regions
