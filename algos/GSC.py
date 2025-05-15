@@ -327,8 +327,8 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
             color, edge, texture, and spatial differences.
         """
 
-        # 1. Color difference (skip L channel): Euclidean norm in AB space, normalized
-        cd = np.linalg.norm(graph.nodes[neighbor]['mean color'][1:] - graph.nodes[dst]['mean color'][1:]) / (self._max_cd + 1e-8)
+        # 1. Color difference : Euclidean norm in AB space, normalized
+        cd = np.linalg.norm(graph.nodes[neighbor]['mean color'] - graph.nodes[dst]['mean color']) / (self._max_cd + 1e-8)
 
         # 2. Texture difference: absolute difference, normalized
         td = abs(graph.nodes[neighbor]['texture'] - graph.nodes[dst]['texture']) / (self._max_td + 1e-8)
@@ -375,8 +375,8 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
             Spatial distance (Euclidean distance) between centroids of src and dst.
         """
 
-        # 1. Color difference (skip L channel): Euclidean norm in AB color space
-        cd = np.linalg.norm(graph.nodes[src]['mean color'][1:] - graph.nodes[dst]['mean color'][1:])
+        # 1. Color difference : Euclidean norm in AB color space
+        cd = np.linalg.norm(graph.nodes[src]['mean color'] - graph.nodes[dst]['mean color'])
 
         # 2. Edge strength: absolute 'edge_strength' attribute from the RAG
         ed = abs(graph.edges[src, dst].get('edge_strength', 0))
@@ -465,7 +465,7 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
         for u, v in graph.edges:
 
             # 1. Color difference in AB channels, normalized by maximum
-            cd = np.linalg.norm(graph.nodes[u]['mean color'][1:] - graph.nodes[v]['mean color'][1:]) / (self._max_cd + 1e-8)
+            cd = np.linalg.norm(graph.nodes[u]['mean color'] - graph.nodes[v]['mean color']) / (self._max_cd + 1e-8)
 
             # 2. Texture difference, normalized by maximum
             td = abs(graph.nodes[u]['texture'] - graph.nodes[v]['texture']) / (self._max_td + 1e-8)
