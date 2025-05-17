@@ -148,7 +148,7 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
             mask2 = labels == n2
             boundary = np.logical_and(mask1, binary_dilation(mask2)) | np.logical_and(mask2, binary_dilation(mask1))
             if np.any(boundary):
-                strength = self.edge_strength[boundary].mean()
+                strength = self.edge_strength[boundary].max()
             else:
                 strength = 0.0
             rag.edges[n1, n2]['edge_strength'] = strength
@@ -246,6 +246,9 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
 
         # Step 1: Generate initial superpixel labels
         sp_labels = self._get_superpixels(image)
+        out = label2rgb(sp_labels, image, kind='avg')
+        plt.imshow(out)
+        plt.show()
 
         # Step 2: Build a Region Adjacency Graph (RAG) using superpixel labels
         rag = self._build_rag(image, sp_labels)
@@ -254,7 +257,7 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
         merged = self._merge_rag_labels(sp_labels, rag)
 
         # (Optional) Visualize segmentation by overlaying RAG on image
-        # self.draw_rag_overlay(image, merged, rag)
+        self.draw_rag_overlay(image, merged, rag)
 
         return merged
 
@@ -340,9 +343,9 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
 
         # 4. Edge strength: maximum gradient at the boundary between merged region and neighbor
         # Create mask for merged region: union of src and dst pixels
-        merged_mask = (self.labels == dst) | (self.labels == src)
+        mask1 = (self.labels == dst) | (self.labels == src)
         mask2 = self.labels == neighbor
-        boundary = binary_dilation(merged_mask, np.ones((3, 3))) & mask2
+        boundary = np.logical_and(mask1, binary_dilation(mask2)) | np.logical_and(mask2, binary_dilation(mask1))
         strength = self.edge_strength[boundary].max() if np.any(boundary) else 0.0
         ed = strength / (self._max_ed + 1e-8)
 
@@ -476,9 +479,9 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
             sd = np.hypot(dx, dy) / (self._max_sd + 1e-8)
 
             # 4. Edge strength: maximum gradient along boundary between regions u and v
-            merged_mask = (labels == u)
+            mask1 = (labels == u)
             mask2 = labels == v
-            boundary = binary_dilation(merged_mask, np.ones((3, 3))) & mask2
+            boundary = np.logical_and(mask1, binary_dilation(mask2)) | np.logical_and(mask2, binary_dilation(mask1))
             strength = self.edge_strength[boundary].max() if np.any(boundary) else 0.0
             ed = strength / (self._max_ed + 1e-8)
 
