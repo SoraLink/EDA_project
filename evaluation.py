@@ -4,6 +4,7 @@ import time
 
 import cv2
 import numpy as np
+import matplotlib
 from matplotlib import pyplot as plt
 from scipy.ndimage import binary_dilation
 from skimage.color import label2rgb
@@ -16,6 +17,7 @@ from algos.image_segement_algorithm import ImageSegmentAlgorithm
 from algos.kmeans_algorithm import KMeansSegmentation
 from algos.spectral_clustering import SpectralClustering
 
+matplotlib.use('Agg')
 
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -234,7 +236,7 @@ def preprocess_label(label):
     _, mask = cv2.threshold(gray, 127, 1, cv2.THRESH_BINARY)
     return mask
 
-def evaluate(image_dir: str, label_dir: str, algo: ImageSegmentAlgorithm, is_draw=True) -> (list, list):
+def evaluate(image_dir: str, label_dir: str, algo: ImageSegmentAlgorithm, output) -> (list, list):
     time_consumings = {}
     ious = {}
     bf_scores = {}
@@ -242,11 +244,11 @@ def evaluate(image_dir: str, label_dir: str, algo: ImageSegmentAlgorithm, is_dra
         time_start = time.time()
         img = cv2.imread(os.path.join(image_dir, image_path))
         prediction = algo.segment(img)
-        if is_draw:
+        if output:
             out = label2rgb(prediction, img, kind='avg')
             plt.imshow(out)
             plt.axis('off')
-            plt.show()
+            plt.savefig(os.path.join(output, image_path))
         time_end = time.time()
         time_consumings[image_path] = time_end - time_start
         label = cv2.imread(os.path.join(label_dir, image_path))
@@ -295,7 +297,8 @@ def main():
         )
     else:
         raise NotImplementedError(f"algo {args.algo} not implemented")
-    time_consumings, ious, bf_scores = evaluate(args.img_dir, args.label_dir, algo)
+    os.makedirs(args.output, exist_ok=True)
+    time_consumings, ious, bf_scores = evaluate(args.img_dir, args.label_dir, algo, args.output)
     print("time_consumings:", time_consumings)
     print("ious:", ious)
     print("bf_scores", bf_scores)

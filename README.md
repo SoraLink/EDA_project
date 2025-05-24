@@ -9,11 +9,11 @@ python ./evaluation.py gsc
 
 ## Kmeans
 ```markdown
-python ./evaluation.py k-means
+python ./evaluation.py kmeans
 ```
 
 ## Spectral clustering
 
 ```markdown
-python ./evaluation spectral
+python ./evaluation.py spectral
 ```
