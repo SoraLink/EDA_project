@@ -132,17 +132,17 @@ def get_parser():
     gsc.add_argument(
         "--alpha",
         type=float,
-        default=1
+        default=0.5
     )
     gsc.add_argument(
         "--beta",
         type=float,
-        default=0.
+        default=0.3
     )
     gsc.add_argument(
         "--gamma",
         type=float,
-        default=0.
+        default=0.2
     )
     gsc.add_argument(
         "--delta",
@@ -152,7 +152,7 @@ def get_parser():
     gsc.add_argument(
         "--threshold",
         type=float,
-        default=0.5
+        default=0.2
     )
     gsc.add_argument(
         "--K",

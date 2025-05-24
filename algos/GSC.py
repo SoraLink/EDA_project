@@ -246,9 +246,6 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
 
         # Step 1: Generate initial superpixel labels
         sp_labels = self._get_superpixels(image)
-        out = label2rgb(sp_labels, image, kind='avg')
-        plt.imshow(out)
-        plt.show()
 
         # Step 2: Build a Region Adjacency Graph (RAG) using superpixel labels
         rag = self._build_rag(image, sp_labels)
@@ -257,7 +254,7 @@ class GraphBasedSuperpixel(ImageSegmentAlgorithm):
         merged = self._merge_rag_labels(sp_labels, rag)
 
         # (Optional) Visualize segmentation by overlaying RAG on image
-        self.draw_rag_overlay(image, merged, rag)
+        # self.draw_rag_overlay(image, merged, rag)
 
         return merged
 
