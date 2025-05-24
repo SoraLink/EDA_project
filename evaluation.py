@@ -164,6 +164,21 @@ def get_parser():
     return parser
 
 def mask_iou(a: np.ndarray, b: np.ndarray) -> float:
+    """
+    Compute the Intersection over Union (IoU) between two binary masks.
+
+    Parameters
+    ----------
+    a : np.ndarray
+        First binary mask. Should be a 2D array of 0s and 1s (or boolean).
+    b : np.ndarray
+        Second binary mask. Should be a 2D array of 0s and 1s (or boolean).
+
+    Returns
+    -------
+    float
+        The IoU score between the two masks. Returns 0.0 if the union is zero.
+    """
     A = a.astype(bool)
     B = b.astype(bool)
     inter = np.logical_and(A, B).sum()
@@ -173,6 +188,25 @@ def mask_iou(a: np.ndarray, b: np.ndarray) -> float:
     return inter / union
 
 def calculate_iou(prediction, label, gt_class: int=1):
+    """
+    Calculate the best Intersection over Union (IoU) score between predicted mask regions and a specific ground truth class.
+
+    Parameters
+    ----------
+    prediction : np.ndarray
+        The predicted segmentation map with integer class labels.
+    label : np.ndarray
+        The ground truth segmentation map with integer class labels.
+    gt_class : int, optional
+        The ground truth class to evaluate against (default is 1).
+
+    Returns
+    -------
+    best_class : int or None
+        The predicted class that gives the highest IoU with the ground truth mask for `gt_class`.
+    best_iou : float
+        The best IoU score found between the predicted regions and the ground truth class.
+    """
     gt_mask = (label == gt_class).astype(np.uint8)
 
     best_iou = 0.0
@@ -237,6 +271,31 @@ def preprocess_label(label):
     return mask
 
 def evaluate(image_dir: str, label_dir: str, algo: ImageSegmentAlgorithm, output) -> (list, list):
+    """
+    Evaluate a segmentation algorithm on a dataset of images by computing runtime,
+    Intersection over Union (IoU), and Boundary F-score for each image.
+
+    Parameters
+    ----------
+    image_dir : str
+        Path to the directory containing input images.
+    label_dir : str
+        Path to the directory containing ground truth label images.
+    algo : ImageSegmentAlgorithm
+        An instance of a segmentation algorithm that implements a `segment(image)` method.
+    output : str or None
+        Path to a directory where segmentation results (visualized with `label2rgb`) are saved.
+        If None or empty, no output is saved.
+
+    Returns
+    -------
+    time_consumings : dict
+        Dictionary mapping image filenames to their segmentation runtime in seconds.
+    ious : dict
+        Dictionary mapping image filenames to their IoU score with the ground truth.
+    bf_scores : dict
+        Dictionary mapping image filenames to their Boundary F-score with the ground truth.
+    """
     time_consumings = {}
     ious = {}
     bf_scores = {}
